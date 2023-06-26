@@ -1,4 +1,4 @@
-module api_helloworld
+module chat
 
 go 1.20
 
