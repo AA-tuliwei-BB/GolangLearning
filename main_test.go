@@ -8,10 +8,11 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 )
 
 func HttpGet(par map[string]string) string {
-	ApiUrl := "localhost:3030/"
+	ApiUrl := "http://127.0.0.1:3030/"
 	data := url.Values{}
 	for k, v := range par {
 		data.Set(k, v)
@@ -68,7 +69,7 @@ func testSend(username string, token string, message string) string {
 
 func testQuery(username string, token string) string {
 	par := map[string]string{
-		"opt":      "send",
+		"opt":      "query",
 		"username": username,
 		"token":    token,
 	}
@@ -88,7 +89,7 @@ func testRun() string {
 	username := RandomString(10)
 	passwd := RandomString(10)
 	res := testSignup(username, passwd)
-	if res != "succeed" {
+	if res != "Succeed\n" {
 		return "signup error"
 	}
 	res = testLogin(username, passwd)
@@ -97,20 +98,33 @@ func testRun() string {
 		return "login error"
 	}
 	token := split_res[len(split_res)-1]
+	token = strings.TrimRight(token, "\n")
 	str1 := RandomString(15)
 	str2 := RandomString(15)
-	testSend(username, token, str1)
-	testSend(username, token, str2)
+	res = testSend(username, token, str1)
+	if strings.Split(res, " ")[0] != "successfully" {
+		log.Println(username, ": send error")
+		return "send error!!"
+	}
+	res = testSend(username, token, str2)
+	if strings.Split(res, " ")[0] != "successfully" {
+		log.Println(username, ": send error")
+		return "send error"
+	}
 	res = testQuery(username, token)
 	split_res = strings.Split(res, "\n")
-	if split_res[0] != str1 || split_res[1] != str2 {
-		return "send or query error"
+	if split_res[1] != str1 || split_res[0] != str2 {
+		log.Println(username, token, str1, str2, split_res)
+		return "query error"
 	}
-	return "ok"
+	return "ok6"
 }
 
 func TestRun(t *testing.T) {
-	log.Println(testRun())
-	log.Println(testRun())
+	log.Println(time.Now().UnixNano())
+	rand.Seed(time.Now().UnixNano())
+	for i := 1; i <= 10; i = i + 1 {
+		go testRun()
+	}
 	log.Println(testRun())
 }

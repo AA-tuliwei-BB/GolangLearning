@@ -10,6 +10,7 @@ import (
 
 type DataBase struct {
 	db *badger.DB
+	//lock sync.RWMutex
 }
 
 func (db *DataBase) Open(path string) error {
@@ -41,6 +42,7 @@ func (db *DataBase) Close() {
 }
 
 func (db *DataBase) Write(key []byte, value []byte) error {
+	//db.lock.Lock()
 	wb := db.db.NewWriteBatch()
 	defer wb.Cancel()
 	err := wb.SetEntry(badger.NewEntry(key, value).WithMeta(0))
@@ -51,11 +53,13 @@ func (db *DataBase) Write(key []byte, value []byte) error {
 	if err != nil {
 		log.Println("Failed to flush data to cache.", "key", string(key), "value", string(value), "err", err)
 	}
+	//db.lock.Unlock()
 	return err
 }
 
 func (db *DataBase) Get(key []byte) string {
 	var ival []byte
+	//db.lock.RLock()
 	err := db.db.View(func(txn *badger.Txn) error {
 		item, err := txn.Get(key)
 		if err != nil {
@@ -64,6 +68,7 @@ func (db *DataBase) Get(key []byte) string {
 		ival, err = item.ValueCopy(nil)
 		return err
 	})
+	//db.lock.RUnlock()
 	if err != nil {
 		log.Println("Failed to read data from the cache.", "key", string(key), "error", err)
 	}
@@ -72,6 +77,7 @@ func (db *DataBase) Get(key []byte) string {
 
 func (db *DataBase) Has(key []byte) (bool, error) {
 	var exist bool = false
+	//db.lock.RLock()
 	err := db.db.View(func(txn *badger.Txn) error {
 		_, err := txn.Get(key)
 		if err != nil {
@@ -81,6 +87,7 @@ func (db *DataBase) Has(key []byte) (bool, error) {
 		}
 		return err
 	})
+	//db.lock.RUnlock()
 	// align with leveldb, if the key doesn't exist, leveldb returns nil
 	if err != nil {
 		if strings.HasSuffix(err.Error(), "not found") {
@@ -91,9 +98,12 @@ func (db *DataBase) Has(key []byte) (bool, error) {
 }
 
 func (db *DataBase) Delete(key []byte) error {
+	//db.lock.Lock()
 	wb := db.db.NewWriteBatch()
 	defer wb.Cancel()
-	return wb.Delete(key)
+	res := wb.Delete(key)
+	//db.lock.Unlock()
+	return res
 }
 
 func (db *DataBase) Modify(key []byte, value []byte) error {

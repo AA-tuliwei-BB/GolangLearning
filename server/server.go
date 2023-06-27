@@ -19,6 +19,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"log"
+	"sync"
 )
 
 var LoginDb, HeaderDb, MessageDb, PasswdDb database.DataBase
@@ -130,7 +131,6 @@ func UserLogin(username string, passwd string) (string, string) { // return (log
 
 func UserLogout(username string) string {
 	check := CheckLogin(username)
-	log.Println("test point")
 	if !check {
 		return "User not Login!"
 	} else {
@@ -144,7 +144,7 @@ func UserLogout(username string) string {
 }
 
 func QueryMessage(username string, token string) []string {
-	var result []string
+	var result = []string{}
 	check := CheckToken(username, token)
 	if !check {
 		result = append(result, "invalid token")
@@ -162,13 +162,13 @@ func QueryMessage(username string, token string) []string {
 	pos := []byte(HeaderDb.Get([]byte(username)))[:4]
 	for pos[0] != 0 || pos[1] != 0 || pos[2] != 0 || pos[3] != 0 {
 		content := MessageDb.Get(pos)
-		log.Println("pos", pos)
-		log.Println("content", content)
 		result = append(result, content[4:])
 		pos = []byte(content)[:4]
 	}
 	return result
 }
+
+var message_lock sync.Mutex
 
 func SendMessage(username string, token string, message string) string {
 	check := CheckToken(username, token)
@@ -187,14 +187,15 @@ func SendMessage(username string, token string, message string) string {
 		HeaderDb.Write([]byte(username), []byte{0, 0, 0, 0}[:4])
 	}
 	var count int32
+	message_lock.Lock()
 	ByteBuffer := bytes.NewBuffer([]byte(MessageDb.Get([]byte("counter")))[:4])
 	binary.Read(ByteBuffer, binary.BigEndian, &count)
 	count = count + 1
+	log.Println(count)
 	binary.Write(ByteBuffer, binary.BigEndian, count)
 	MessageDb.Modify([]byte("counter"), ByteBuffer.Bytes())
+	message_lock.Unlock()
 	content := []byte(HeaderDb.Get([]byte(username)) + message)
-	log.Println("content", content)
-	log.Println("bytes", ByteBuffer.Bytes())
 	HeaderDb.Modify([]byte(username), ByteBuffer.Bytes())
 	MessageDb.Write(ByteBuffer.Bytes(), content)
 	return "successfully send message"
