@@ -1,17 +1,18 @@
 package main
 
 import (
+	"chat/server"
 	"fmt"
 	"net/http"
 )
 
 func test() {
 	path := "database_file"
-	err := Open(path)
+	err := server.Open(path)
 	if err != nil {
 		fmt.Println("error", err)
 	}
-	Close()
+	server.Close()
 }
 
 func MyServer(w http.ResponseWriter, r *http.Request) {
@@ -36,16 +37,16 @@ func MyServer(w http.ResponseWriter, r *http.Request) {
 
 	switch opt {
 	case "signup":
-		fmt.Fprintln(w, UserSignup(username, passwd))
+		fmt.Fprintln(w, server.UserSignup(username, passwd))
 	case "login":
-		log, token := UserLogin(username, passwd)
+		log, token := server.UserLogin(username, passwd)
 		fmt.Fprintln(w, log, token)
 	case "logout":
-		fmt.Fprintln(w, UserLogout(username))
+		fmt.Fprintln(w, server.UserLogout(username))
 	case "send":
-		fmt.Fprintln(w, SendMessage(username, token, message))
+		fmt.Fprintln(w, server.SendMessage(username, token, message))
 	case "query":
-		result := QueryMessage(username, token)
+		result := server.QueryMessage(username, token)
 		for _, v := range result {
 			fmt.Fprintln(w, v)
 		}
@@ -53,12 +54,12 @@ func MyServer(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-	path := "database_file"
-	err := Open(path)
+	path := "../database/database_file"
+	err := server.Open(path)
 	if err != nil {
 		fmt.Println("error", err)
 	}
-	defer Close()
+	defer server.Close()
 
 	http.HandleFunc("/", MyServer)
 

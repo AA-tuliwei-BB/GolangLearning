@@ -1,4 +1,4 @@
-package main
+package server
 
 // login request: localhost:port?opt=login&username=$username
 // return: "success!" or "failed!"
