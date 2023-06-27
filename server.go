@@ -12,32 +12,37 @@ package main
 // query request: localhost:port?opt=query
 // return "Error!" or $message
 
-// database: username-time-message
-
 import (
 	"bytes"
 	"chat/database"
+	"crypto/md5"
 	"encoding/binary"
-	"fmt"
+	"encoding/hex"
 	"log"
-	"net/http"
 )
 
-var LoginDb, HeaderDb, MessageDb database.DataBase
+var LoginDb, HeaderDb, MessageDb, PasswdDb database.DataBase
 
 func Open(path string) error {
 	err := LoginDb.Open(path + "/Login.db")
 	if err != nil {
 		return err
 	}
+	err = PasswdDb.Open(path + "/Passwd.db")
+	if err != nil {
+		LoginDb.Close()
+		return err
+	}
 	err = HeaderDb.Open(path + "/Header.db")
 	if err != nil {
 		LoginDb.Close()
+		PasswdDb.Close()
 		return err
 	}
 	err = MessageDb.Open(path + "/Message.db")
 	if err != nil {
 		LoginDb.Close()
+		PasswdDb.Close()
 		HeaderDb.Close()
 		return err
 	}
@@ -51,6 +56,18 @@ func Close() {
 	LoginDb.Close()
 	HeaderDb.Close()
 	MessageDb.Close()
+}
+
+func GetToken(username string) string {
+	secret := "secret"
+	b := md5.Sum([]byte(username + secret))
+	return hex.EncodeToString(b[:])
+}
+
+func CheckToken(username string, token string) bool {
+	secret := "secret"
+	b := md5.Sum([]byte(username + secret))
+	return hex.EncodeToString(b[:]) == token
 }
 
 func CheckLogin(username string) bool {
@@ -67,16 +84,46 @@ func CheckLogin(username string) bool {
 	}
 }
 
-func UserLogin(username string) string {
+func UserSignup(username string, passwd string) string {
+	check, err := PasswdDb.Has([]byte(username))
+	if err != nil {
+		log.Println("Error on check Signup", err)
+		return "error"
+	}
+	if check {
+		return "User exists"
+	} else {
+		PasswdDb.Write([]byte(username), []byte(passwd))
+		return "Succeed"
+	}
+}
+
+func UserCheckPasswd(username string, passwd string) bool {
+	check, err := PasswdDb.Has([]byte(username))
+	if err != nil {
+		log.Println("Error on check passwd", err)
+		return false
+	}
+	if check {
+		return passwd == PasswdDb.Get([]byte(username))
+	} else {
+		return false
+	}
+}
+
+func UserLogin(username string, passwd string) (string, string) { // return (log, token)
+	if !UserCheckPasswd(username, passwd) {
+		return "Password incorrect", ""
+	}
 	check := CheckLogin(username)
 	if check {
-		return "User already logged in"
+		return "User already logged in", ""
 	} else {
 		err := LoginDb.Modify([]byte(username), []byte("1"))
 		if err != nil {
-			return err.Error()
+			return err.Error(), ""
 		} else {
-			return "Successfully log in"
+			return "Successfully log in", GetToken(username)
 		}
 	}
 }
@@ -96,9 +143,14 @@ func UserLogout(username string) string {
 	}
 }
 
-func QueryMessage(username string) []string {
+func QueryMessage(username string, token string) []string {
 	var result []string
-	check := CheckLogin(username)
+	check := CheckToken(username, token)
+	if !check {
+		result = append(result, "invalid token")
+		return result
+	}
+	check = CheckLogin(username)
 	if !check {
 		result = append(result, "User not login")
 		return result
@@ -118,8 +170,12 @@ func QueryMessage(username string) []string {
 	return result
 }
 
-func SendMessage(username string, message string) string {
-	check := CheckLogin(username)
+func SendMessage(username string, token string, message string) string {
+	check := CheckToken(username, token)
+	if !check {
+		return "invalid token"
+	}
+	check = CheckLogin(username)
 	if !check {
 		return "User not login"
 	}
@@ -142,62 +198,4 @@ func SendMessage(username string, message string) string {
 	HeaderDb.Modify([]byte(username), ByteBuffer.Bytes())
 	MessageDb.Write(ByteBuffer.Bytes(), content)
 	return "successfully send message"
-}
-
-func test() {
-	path := "database_file"
-	err := Open(path)
-	if err != nil {
-		fmt.Println("error", err)
-	}
-	fmt.Println(UserLogin("user1"))
-	fmt.Println(UserLogin("user2"))
-	fmt.Println(UserLogout("user2"))
-	fmt.Println(SendMessage("user1", "hello?"))
-	fmt.Println(SendMessage("user1", "hello!"))
-	fmt.Println(QueryMessage("user1"))
-	Close()
-}
-
-func MyServer(w http.ResponseWriter, r *http.Request) {
-	var opt, username, message string
-	for k, v := range r.URL.Query() {
-		switch k {
-		case "opt":
-			opt = v[0]
-		case "username":
-			username = v[0]
-		case "message":
-			message = v[0]
-		default:
-		}
-	}
-	switch opt {
-	case "login":
-		fmt.Fprintln(w, UserLogin(username))
-	case "logout":
-		fmt.Fprintln(w, UserLogout(username))
-	case "send":
-		fmt.Fprintln(w, SendMessage(username, message))
-	case "query":
-		result := QueryMessage(username)
-		for _, v := range result {
-			fmt.Fprintln(w, v)
-		}
-	}
-}
-
-func main() {
-	path := "database_file"
-	err := Open(path)
-	if err != nil {
-		fmt.Println("error", err)
-	}
-	defer Close()
-
-	http.HandleFunc("/", MyServer)
-
-	if err := http.ListenAndServe(":3030", nil); err != nil {
-		fmt.Printf("服务器连接出错！")
-	}
 }
