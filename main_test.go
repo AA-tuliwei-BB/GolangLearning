@@ -102,12 +102,12 @@ func testRun() string {
 	str1 := RandomString(15)
 	str2 := RandomString(15)
 	res = testSend(username, token, str1)
-	if strings.Split(res, " ")[0] != "successfully" {
+	if strings.Split(res, " ")[0] != "Successfully" {
 		log.Println(username, ": send error")
 		return "send error!!"
 	}
 	res = testSend(username, token, str2)
-	if strings.Split(res, " ")[0] != "successfully" {
+	if strings.Split(res, " ")[0] != "Successfully" {
 		log.Println(username, ": send error")
 		return "send error"
 	}
@@ -117,7 +117,7 @@ func testRun() string {
 		log.Println(username, token, str1, str2, split_res)
 		return "query error"
 	}
-	return "ok6"
+	return "ok7"
 }
 
 func TestRun(t *testing.T) {

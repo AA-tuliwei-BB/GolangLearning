@@ -13,16 +13,16 @@ package server
 // return "Error!" or $message
 
 import (
-	"bytes"
 	"chat/database"
+	listdatabase "chat/listDatabase"
 	"crypto/md5"
-	"encoding/binary"
 	"encoding/hex"
 	"log"
 	"sync"
 )
 
-var LoginDb, HeaderDb, MessageDb, PasswdDb database.DataBase
+var LoginDb, PasswdDb database.DataBase
+var MessageDb listdatabase.ListDb
 
 func Open(path string) error {
 	err := LoginDb.Open(path + "/Login.db")
@@ -34,28 +34,18 @@ func Open(path string) error {
 		LoginDb.Close()
 		return err
 	}
-	err = HeaderDb.Open(path + "/Header.db")
+	err = MessageDb.Open(path + "/MessageDb")
 	if err != nil {
 		LoginDb.Close()
 		PasswdDb.Close()
 		return err
-	}
-	err = MessageDb.Open(path + "/Message.db")
-	if err != nil {
-		LoginDb.Close()
-		PasswdDb.Close()
-		HeaderDb.Close()
-		return err
-	}
-	if flag, _ := MessageDb.Has([]byte("counter")); !flag {
-		MessageDb.Write([]byte("counter"), []byte{0, 0, 0, 0}[:4])
 	}
 	return nil
 }
 
 func Close() {
 	LoginDb.Close()
-	HeaderDb.Close()
+	PasswdDb.Close()
 	MessageDb.Close()
 }
 
@@ -155,16 +145,7 @@ func QueryMessage(username string, token string) []string {
 		result = append(result, "User not login")
 		return result
 	}
-	if flag, err := HeaderDb.Has([]byte(username)); !flag || err != nil {
-		result = append(result, "No message")
-		return result
-	}
-	pos := []byte(HeaderDb.Get([]byte(username)))[:4]
-	for pos[0] != 0 || pos[1] != 0 || pos[2] != 0 || pos[3] != 0 {
-		content := MessageDb.Get(pos)
-		result = append(result, content[4:])
-		pos = []byte(content)[:4]
-	}
+	result = MessageDb.Query(username)
 	return result
 }
 
@@ -179,24 +160,9 @@ func SendMessage(username string, token string, message string) string {
 	if !check {
 		return "User not login"
 	}
-	flag, err := HeaderDb.Has([]byte(username))
+	err := MessageDb.Insert(username, message)
 	if err != nil {
 		return err.Error()
 	}
-	if !flag {
-		HeaderDb.Write([]byte(username), []byte{0, 0, 0, 0}[:4])
-	}
-	var count int32
-	message_lock.Lock()
-	ByteBuffer := bytes.NewBuffer([]byte(MessageDb.Get([]byte("counter")))[:4])
-	binary.Read(ByteBuffer, binary.BigEndian, &count)
-	count = count + 1
-	log.Println(count)
-	binary.Write(ByteBuffer, binary.BigEndian, count)
-	MessageDb.Modify([]byte("counter"), ByteBuffer.Bytes())
-	message_lock.Unlock()
-	content := []byte(HeaderDb.Get([]byte(username)) + message)
-	HeaderDb.Modify([]byte(username), ByteBuffer.Bytes())
-	MessageDb.Write(ByteBuffer.Bytes(), content)
-	return "successfully send message"
+	return "Successfully send message"
 }
