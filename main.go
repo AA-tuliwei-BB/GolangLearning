@@ -3,6 +3,7 @@ package main
 import (
 	"chat/server"
 	"fmt"
+	"log"
 	"net/http"
 )
 
@@ -42,31 +43,42 @@ func MyServer(w http.ResponseWriter, r *http.Request) {
 
 	switch opt {
 	case "signup":
+		log.Printf("user: %s sign up with passwd: %s\n", username, passwd)
 		fmt.Fprintln(w, server.UserSignup(username, passwd))
 	case "login":
-		log, token := server.UserLogin(username, passwd)
-		fmt.Fprintln(w, log, token)
+		log.Printf("user: %s login with passwd: %s;", username, passwd)
+		res, token := server.UserLogin(username, passwd)
+		log.Printf("get token: %s\n", token)
+		fmt.Fprintln(w, res, token)
 	case "logout":
+		log.Printf("user: %s logout\n", username)
 		fmt.Fprintln(w, server.UserLogout(username))
+
 	case "send":
 		if function == "cof" {
+			log.Printf("user: %s, token: %s send: \"%s\"\n", username, token, message)
 			fmt.Fprintln(w, server.SendMessage(username, token, message))
 		} else if function == "chat" {
+			log.Printf("user: %s, token: %s chat with %s: \"%s\"\n", username, token, parameter, message)
 			fmt.Fprintln(w, server.SendChat(username, token, message, parameter))
 		}
+
 	case "query":
 		if function == "cof" {
+			log.Printf("user: %s, token: %s query cof\n", username, token)
 			result := server.QueryMessage(username, token)
 			for _, v := range result {
 				fmt.Fprintln(w, v)
 			}
 		} else if function == "chat" {
+			log.Printf("user: %s, token: %s query chat with %s\n", username, token, parameter)
 			result := server.QueryChat(username, token, parameter)
 			for _, v := range result {
 				fmt.Fprintln(w, v)
 			}
 		}
 	case "makefriend":
+		log.Printf("%s make friend with %s", username, parameter)
 		fmt.Fprintln(w, server.MakeFriend(username, parameter))
 	}
 }

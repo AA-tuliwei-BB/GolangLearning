@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"chat/database"
 	"encoding/binary"
-	"log"
 	"sync"
 )
 
@@ -62,7 +61,7 @@ func (db *ListDb) Insert(key string, value string) error {
 	ByteBuffer := bytes.NewBuffer([]byte(db.list.Get([]byte("counter")))[:4])
 	binary.Read(ByteBuffer, binary.BigEndian, &count)
 	count = count + 1
-	log.Println(count)
+	//log.Println(count)
 	binary.Write(ByteBuffer, binary.BigEndian, count)
 	db.list.Modify([]byte("counter"), ByteBuffer.Bytes())
 	content := []byte(db.head.Get([]byte(key)) + value)
