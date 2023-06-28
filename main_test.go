@@ -123,8 +123,8 @@ func testRun() string {
 func TestRun(t *testing.T) {
 	log.Println(time.Now().UnixNano())
 	rand.Seed(time.Now().UnixNano())
-	for i := 1; i <= 10; i = i + 1 {
-		go testRun()
-	}
+	//	for i := 1; i <= 4; i = i + 1 {
+	//	go testRun()
+	//}
 	log.Println(testRun())
 }

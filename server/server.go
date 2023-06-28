@@ -1,28 +1,32 @@
 package server
 
-// login request: localhost:port?opt=login&username=$username
-// return: "success!" or "failed!"
-
-// logout request: localhost:port?opt=logout&username=$username
-// return: "success!" or "failed!"
-
-// send message request: localhost:port?opt=send&username=$username&message=$message
-// return: "success!" or "failed!"
-
-// query request: localhost:port?opt=query
-// return "Error!" or $message
-
 import (
 	"chat/database"
 	listdatabase "chat/listDatabase"
 	"crypto/md5"
 	"encoding/hex"
+	"encoding/json"
+	"fmt"
 	"log"
+	"sort"
 	"sync"
+	"time"
 )
 
+type MessageInDb struct {
+	Time    int64
+	Message string
+}
+
+type Message struct {
+	Time     int64
+	Message  string
+	Username string
+}
+
 var LoginDb, PasswdDb database.DataBase
-var MessageDb listdatabase.ListDb
+var MessageDb, FriendDb listdatabase.ListDb
+var ChatDb listdatabase.ListDb
 
 func Open(path string) error {
 	err := LoginDb.Open(path + "/Login.db")
@@ -40,6 +44,21 @@ func Open(path string) error {
 		PasswdDb.Close()
 		return err
 	}
+	err = FriendDb.Open(path + "/FriendDb")
+	if err != nil {
+		LoginDb.Close()
+		PasswdDb.Close()
+		MessageDb.Close()
+		return err
+	}
+	err = ChatDb.Open(path + "/ChatDb")
+	if err != nil {
+		LoginDb.Close()
+		PasswdDb.Close()
+		MessageDb.Close()
+		FriendDb.Close()
+		return err
+	}
 	return nil
 }
 
@@ -47,6 +66,8 @@ func Close() {
 	LoginDb.Close()
 	PasswdDb.Close()
 	MessageDb.Close()
+	FriendDb.Close()
+	ChatDb.Close()
 }
 
 func GetToken(username string) string {
@@ -75,28 +96,71 @@ func CheckLogin(username string) bool {
 	}
 }
 
+var make_friend_lock sync.Mutex
+var signup_lock sync.RWMutex
+
+func CheckExist(username string) bool {
+	signup_lock.RLock()
+	check, err := PasswdDb.Has([]byte(username))
+	signup_lock.RUnlock()
+	return check && err == nil
+}
+
+func IsFriend(username string, friend string) bool {
+	friends := FriendDb.Query(username)
+	for _, v := range friends {
+		if v == friend {
+			return true
+		}
+	}
+	return false
+}
+
+func MakeFriend(username string, friend string) string {
+	make_friend_lock.Lock()
+	if IsFriend(username, friend) {
+		return "They are already friends"
+	}
+	FriendDb.Insert(username, friend)
+	if username != friend {
+		FriendDb.Insert(friend, username)
+	}
+	make_friend_lock.Unlock()
+	return "Succeed"
+}
+
 func UserSignup(username string, passwd string) string {
+	signup_lock.Lock()
 	check, err := PasswdDb.Has([]byte(username))
 	if err != nil {
 		log.Println("Error on check Signup", err)
+		signup_lock.Unlock()
 		return "error"
 	}
 	if check {
+		signup_lock.Unlock()
 		return "User exists"
 	} else {
 		PasswdDb.Write([]byte(username), []byte(passwd))
+		MakeFriend(username, username)
+		signup_lock.Unlock()
 		return "Succeed"
 	}
 }
 
 func UserCheckPasswd(username string, passwd string) bool {
+	signup_lock.RLock()
 	check, err := PasswdDb.Has([]byte(username))
+	signup_lock.RUnlock()
 	if err != nil {
 		log.Println("Error on check passwd", err)
 		return false
 	}
 	if check {
-		return passwd == PasswdDb.Get([]byte(username))
+		signup_lock.RLock()
+		result := (passwd == PasswdDb.Get([]byte(username)))
+		signup_lock.RUnlock()
+		return result
 	} else {
 		return false
 	}
@@ -133,25 +197,7 @@ func UserLogout(username string) string {
 	}
 }
 
-func QueryMessage(username string, token string) []string {
-	var result = []string{}
-	check := CheckToken(username, token)
-	if !check {
-		result = append(result, "invalid token")
-		return result
-	}
-	check = CheckLogin(username)
-	if !check {
-		result = append(result, "User not login")
-		return result
-	}
-	result = MessageDb.Query(username)
-	return result
-}
-
-var message_lock sync.Mutex
-
-func SendMessage(username string, token string, message string) string {
+func checkQueryAndSend(username string, token string) string {
 	check := CheckToken(username, token)
 	if !check {
 		return "invalid token"
@@ -160,9 +206,85 @@ func SendMessage(username string, token string, message string) string {
 	if !check {
 		return "User not login"
 	}
-	err := MessageDb.Insert(username, message)
+	return ""
+}
+
+func Query(db *listdatabase.ListDb, friends []string) []string {
+	all_messages := []Message{}
+	for _, v := range friends {
+		messages := db.Query(v)
+		if messages[0] == "No message" && len(messages) == 1 {
+			continue
+		}
+		for _, message := range messages {
+			tmp := MessageInDb{}
+			json.Unmarshal([]byte(message), &tmp)
+			tmp2 := Message{tmp.Time, tmp.Message, v}
+			all_messages = append(all_messages, tmp2)
+		}
+	}
+	sort.Slice(all_messages, func(i, j int) bool {
+		return all_messages[i].Time > all_messages[j].Time
+	})
+	result := []string{}
+	for _, v := range all_messages {
+		buffer := fmt.Sprint(v.Time, " ", v.Username, " ", v.Message)
+		result = append(result, buffer)
+	}
+	return result
+}
+
+func SendMessage(username string, token string, message string) string {
+	check := checkQueryAndSend(username, token)
+	if check != "" {
+		return check
+	}
+	tmp := MessageInDb{time.Now().UnixMilli(), message}
+	data, err := json.Marshal(tmp)
+	err = MessageDb.Insert(username, string(data))
 	if err != nil {
 		return err.Error()
 	}
 	return "Successfully send message"
+}
+
+func QueryMessage(username string, token string) []string {
+	check := checkQueryAndSend(username, token)
+	if check != "" {
+		return []string{check}
+	}
+	friends := FriendDb.Query(username)
+	if len(friends) == 1 && friends[0] == "No message" {
+		friends[0] = username
+	}
+	return Query(&MessageDb, friends)
+}
+
+func SendChat(username string, token string, message string, user2 string) string {
+	check := checkQueryAndSend(username, token)
+	if check != "" {
+		return check
+	}
+	if !CheckExist(user2) {
+		return user2 + " does not exist"
+	}
+	tmp := MessageInDb{time.Now().UnixMilli(), message}
+	data, err := json.Marshal(tmp)
+	err = ChatDb.Insert(username+"&"+user2, string(data))
+	if err != nil {
+		return err.Error()
+	}
+	return "Successfully send message"
+}
+
+func QueryChat(username string, token string, user2 string) []string {
+	check := checkQueryAndSend(username, token)
+	if check != "" {
+		return []string{check}
+	}
+	if !CheckExist(user2) {
+		return []string{user2 + " does not exist"}
+	}
+	friends := []string{username + "&" + user2, user2 + "&" + username}
+	return Query(&ChatDb, friends)
 }

@@ -16,9 +16,10 @@ func test() {
 }
 
 func MyServer(w http.ResponseWriter, r *http.Request) {
-	var opt, username, message, token, passwd string
+	var opt, username, message, token, passwd, parameter, function string
 	passwd = ""
 	token = ""
+	parameter = ""
 	for k, v := range r.URL.Query() {
 		switch k {
 		case "opt":
@@ -31,6 +32,10 @@ func MyServer(w http.ResponseWriter, r *http.Request) {
 			token = v[0]
 		case "passwd":
 			passwd = v[0]
+		case "parameter":
+			parameter = v[0]
+		case "function":
+			function = v[0]
 		default:
 		}
 	}
@@ -44,12 +49,25 @@ func MyServer(w http.ResponseWriter, r *http.Request) {
 	case "logout":
 		fmt.Fprintln(w, server.UserLogout(username))
 	case "send":
-		fmt.Fprintln(w, server.SendMessage(username, token, message))
-	case "query":
-		result := server.QueryMessage(username, token)
-		for _, v := range result {
-			fmt.Fprintln(w, v)
+		if function == "cof" {
+			fmt.Fprintln(w, server.SendMessage(username, token, message))
+		} else if function == "chat" {
+			fmt.Fprintln(w, server.SendChat(username, token, message, parameter))
 		}
+	case "query":
+		if function == "cof" {
+			result := server.QueryMessage(username, token)
+			for _, v := range result {
+				fmt.Fprintln(w, v)
+			}
+		} else if function == "chat" {
+			result := server.QueryChat(username, token, parameter)
+			for _, v := range result {
+				fmt.Fprintln(w, v)
+			}
+		}
+	case "makefriend":
+		fmt.Fprintln(w, server.MakeFriend(username, parameter))
 	}
 }
 
